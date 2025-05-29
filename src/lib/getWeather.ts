@@ -190,9 +190,8 @@ function aggregateDailyForecasts(timeseries: MetNoTimeseries[]): WeatherData['da
   return dailyForecasts;
 }
 export async function getWeatherByCity(city: string): Promise<WeatherData> {
-  const apiKey = process.env.NEXT_PUBLIC_WEATHER_API_KEY;
 
-  const geoUrl = `https://api.openweathermap.org/geo/1.0/direct?q=${city}&limit=1&appid=${apiKey}`;
+  const geoUrl = `https://nominatim.openstreetmap.org/search?q=${city.replace(" ", '_')}&format=json&limit=1`
   const geoRes = await axios.get(geoUrl);
 
   if (geoRes.data.length === 0) {
