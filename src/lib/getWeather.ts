@@ -112,7 +112,7 @@ function getMetNoWeatherInfo(symbolCode: string | undefined): { description: str
 
 function aggregateDailyForecasts(timeseries: MetNoTimeseries[]): WeatherData['daily'] {
   const dailyAggregates: {
-    [date: string]: {
+    [dateKey: string]: {
       temps: number[];
       precipitationAmounts: number[];
       symbolCodes: string[];
@@ -123,52 +123,48 @@ function aggregateDailyForecasts(timeseries: MetNoTimeseries[]): WeatherData['da
   } = {};
 
   timeseries.forEach(entry => {
-    const date = new Date(entry.time).toString();
-    if (!dailyAggregates[date]) {
-      dailyAggregates[date] = {
+    const date = new Date(entry.time);
+    const dateKey = date.toISOString().split('T')[0];
+
+    if (!dailyAggregates[dateKey]) {
+      dailyAggregates[dateKey] = {
         temps: [],
         precipitationAmounts: [],
         symbolCodes: [],
-        dt: new Date(entry.time).getTime() / 1000,
+        dt: new Date(dateKey).getTime() / 1000,
         dayTemps: [],
         nightTemps: [],
       };
     }
 
     const instantDetails = entry.data.instant.details;
-    dailyAggregates[date].temps.push(instantDetails.air_temperature);
+    dailyAggregates[dateKey].temps.push(instantDetails.air_temperature);
 
-    dailyAggregates[date].precipitationAmounts.push(
-      entry.data.next_1_hours?.details?.precipitation_amount ||
-      0
+    dailyAggregates[dateKey].precipitationAmounts.push(
+      entry.data.next_1_hours?.details?.precipitation_amount || 0
     );
 
     const symbol = entry.data.next_1_hours?.summary.symbol_code;
     if (symbol) {
-      dailyAggregates[date].symbolCodes.push(symbol);
+      dailyAggregates[dateKey].symbolCodes.push(symbol);
     }
-
-    const hour = new Date(entry.time).getUTCHours();
-    if (hour >= 6 && hour < 18) {
-      dailyAggregates[date].dayTemps.push(instantDetails.air_temperature);
+    const hour = date.getUTCHours();
+    if (hour >= 6 && hour < 18) { // Assuming 6 AM to 6 PM UTC is "day"
+      dailyAggregates[dateKey].dayTemps.push(instantDetails.air_temperature);
     } else {
-      dailyAggregates[date].nightTemps.push(instantDetails.air_temperature);
+      dailyAggregates[dateKey].nightTemps.push(instantDetails.air_temperature);
     }
   });
 
   const dailyForecasts: WeatherData['daily'] = [];
-  const sortedDates = Object.keys(dailyAggregates).sort();
-
-  for (let i = 0; i < Math.min(sortedDates.length, 3); i++) {
-    const dateStr = sortedDates[i];
-    const data = dailyAggregates[dateStr];
-
+  const sortedDateKeys = Object.keys(dailyAggregates).sort();
+  for (let i = 0; i < sortedDateKeys.length; i++) {
+    const dateKey = sortedDateKeys[i];
+    const data = dailyAggregates[dateKey];
     if (data.temps.length === 0) continue;
-
     const minTemp = Math.min(...data.temps);
     const maxTemp = Math.max(...data.temps);
     const totalPrecipitation = data.precipitationAmounts.reduce((sum, p) => sum + p, 0);
-
     let dailySymbolCode: string = 'clearsky_day';
     if (data.symbolCodes.length > 0) {
       const symbolCounts: { [s: string]: number } = {};
@@ -176,10 +172,8 @@ function aggregateDailyForecasts(timeseries: MetNoTimeseries[]): WeatherData['da
       dailySymbolCode = Object.keys(symbolCounts).reduce((a, b) => symbolCounts[a] > symbolCounts[b] ? a : b);
     }
     const dailyInfo = getMetNoWeatherInfo(dailySymbolCode);
-
-    const dayTemp = data.dayTemps.length > 0 ? data.dayTemps.reduce((a, b) => a + b, 0) / data.dayTemps.length : (minTemp + maxTemp) / 2;
-    const nightTemp = data.nightTemps.length > 0 ? data.nightTemps.reduce((a, b) => a + b, 0) / data.nightTemps.length : (minTemp + maxTemp) / 2;
-
+    const dayTemp = data.dayTemps.length > 0 ? data.dayTemps.reduce((a, b) => a + b, 0) / data.dayTemps.length : undefined;
+    const nightTemp = data.nightTemps.length > 0 ? data.nightTemps.reduce((a, b) => a + b, 0) / data.nightTemps.length : undefined;
     dailyForecasts.push({
       dt: data.dt,
       temp: {
@@ -195,7 +189,6 @@ function aggregateDailyForecasts(timeseries: MetNoTimeseries[]): WeatherData['da
   }
   return dailyForecasts;
 }
-
 export async function getWeatherByCity(city: string): Promise<WeatherData> {
   const apiKey = process.env.NEXT_PUBLIC_WEATHER_API_KEY;
 
